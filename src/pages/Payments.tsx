@@ -12,6 +12,7 @@ import {
   IndianRupee,
   Receipt,
   CheckCircle,
+  RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -19,6 +20,7 @@ export const Payments: React.FC = () => {
   const [payments, setPayments] = useState<any[]>([]);
   const [students, setStudents] = useState<StudentWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [modeFilter, setModeFilter] = useState<string>('All');
 
@@ -32,18 +34,21 @@ export const Payments: React.FC = () => {
     notes: '',
   });
 
-  const loadData = () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const payList = dataService.getPayments();
-      const stuList = dataService.getStudents();
+      const [payList, stuList] = await Promise.all([
+        dataService.getPayments(),
+        dataService.getStudents(),
+      ]);
       setPayments(payList);
       setStudents(stuList);
       if (stuList.length > 0 && !selectedStudentId) {
         setSelectedStudentId(stuList[0].id);
       }
-    } catch {
-      toast.error('Failed to load payments data');
+    } catch (err: any) {
+      console.error('Failed to load payments from Supabase:', err);
+      toast.error(err?.message || 'Failed to load payments from Supabase');
     } finally {
       setLoading(false);
     }
@@ -65,7 +70,7 @@ export const Payments: React.FC = () => {
         p.register_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (p.notes && p.notes.toLowerCase().includes(searchQuery.toLowerCase()));
 
-      const matchesMode = modeFilter === 'All' || p.mode === modeFilter;
+      const matchesMode = modeFilter === 'All' || p.payment_mode === modeFilter;
 
       return matchesSearch && matchesMode;
     });
@@ -90,15 +95,16 @@ export const Payments: React.FC = () => {
     }
 
     try {
+      setActionLoading(true);
       await dataService.recordPayment({
         student_id: selectedStudentId,
         amount: amountNum,
-        mode: paymentForm.mode,
+        payment_mode: paymentForm.mode,
         payment_date: paymentForm.payment_date,
         notes: paymentForm.notes,
       });
 
-      toast.success(`Recorded payment of ₹${amountNum.toLocaleString('en-IN')}`);
+      toast.success(`Recorded payment of ₹${amountNum.toLocaleString('en-IN')} in Supabase!`);
       setIsRecordModalOpen(false);
       setPaymentForm({
         amount: '',
@@ -106,21 +112,28 @@ export const Payments: React.FC = () => {
         payment_date: new Date().toISOString().split('T')[0],
         notes: '',
       });
-      loadData();
-    } catch {
-      toast.error('Failed to save payment record');
+      await loadData();
+    } catch (err: any) {
+      console.error('Record payment error:', err);
+      toast.error(err?.message || 'Failed to save payment in Supabase');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   // Handle Delete Payment
   const handleDeletePayment = async (id: string, amount: number) => {
-    if (window.confirm(`Are you sure you want to delete this payment of ₹${amount}?`)) {
+    if (window.confirm(`Are you sure you want to delete this payment of ₹${amount} from Supabase?`)) {
       try {
+        setActionLoading(true);
         await dataService.deletePayment(id);
-        toast.success('Payment record removed');
-        loadData();
-      } catch {
-        toast.error('Failed to delete payment');
+        toast.success('Payment record removed from Supabase');
+        await loadData();
+      } catch (err: any) {
+        console.error('Delete payment error:', err);
+        toast.error(err?.message || 'Failed to delete payment from Supabase');
+      } finally {
+        setActionLoading(false);
       }
     }
   };
@@ -131,25 +144,40 @@ export const Payments: React.FC = () => {
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Payments & Collections
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                Payments & Collections
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Live Supabase Ledger
+              </span>
+            </div>
             <p className="text-sm text-slate-500 mt-1">
-              Record new receipts, view full transaction logs, and manage payment modes.
+              Record receipts, manage payment modes, and sync across all devices.
             </p>
           </div>
-          <button
-            onClick={() => {
-              if (students.length > 0 && !selectedStudentId) {
-                setSelectedStudentId(students[0].id);
-              }
-              setIsRecordModalOpen(true);
-            }}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl transition text-sm shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Record New Payment</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadData}
+              className="inline-flex items-center gap-2 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition border border-slate-300 text-sm shadow-sm"
+              title="Refresh ledger from Supabase"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+            <button
+              onClick={() => {
+                if (students.length > 0 && !selectedStudentId) {
+                  setSelectedStudentId(students[0].id);
+                }
+                setIsRecordModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl transition text-sm shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Record New Payment</span>
+            </button>
+          </div>
         </div>
 
         {/* Stats strip */}
@@ -230,7 +258,7 @@ export const Payments: React.FC = () => {
           {loading ? (
             <div className="py-20 text-center text-slate-400">
               <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              <p className="text-sm">Loading payments...</p>
+              <p className="text-sm">Fetching payments ledger from Supabase...</p>
             </div>
           ) : filteredPayments.length === 0 ? (
             <div className="py-20 text-center text-slate-400">
@@ -274,7 +302,7 @@ export const Payments: React.FC = () => {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <span className="px-2.5 py-1 text-xs rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          {p.mode}
+                          {p.payment_mode}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-xs text-slate-500 max-w-xs truncate">
@@ -283,7 +311,8 @@ export const Payments: React.FC = () => {
                       <td className="px-4 py-4 text-right whitespace-nowrap">
                         <button
                           onClick={() => handleDeletePayment(p.id, p.amount)}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition"
+                          disabled={actionLoading}
+                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition disabled:opacity-50"
                           title="Delete Transaction"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -346,7 +375,7 @@ export const Payments: React.FC = () => {
                     <div>
                       <span className="text-slate-500 block">Total Due</span>
                       <span className="font-bold text-slate-800">
-                        ₹{selectedStudent.amount_due.toLocaleString('en-IN')}
+                        ₹{selectedStudent.total_amount.toLocaleString('en-IN')}
                       </span>
                     </div>
                     <div>
@@ -459,9 +488,10 @@ export const Payments: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 text-sm font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl transition shadow-sm"
+                    disabled={actionLoading}
+                    className="px-6 py-2.5 text-sm font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl transition shadow-sm disabled:opacity-50"
                   >
-                    Confirm & Save Receipt
+                    {actionLoading ? 'Saving in Supabase...' : 'Confirm & Save Receipt'}
                   </button>
                 </div>
               </form>

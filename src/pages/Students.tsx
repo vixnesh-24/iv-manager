@@ -17,12 +17,14 @@ import {
   X,
   IndianRupee,
   Layers,
+  RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export const Students: React.FC = () => {
   const [students, setStudents] = useState<StudentWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Partial' | 'Pending'>('All');
 
@@ -37,8 +39,10 @@ export const Students: React.FC = () => {
   const [studentForm, setStudentForm] = useState({
     name: '',
     register_number: '',
+    department: 'CSE',
     section: 'B',
-    amount_due: 0,
+    phone: '',
+    total_amount: 0,
   });
 
   // Payment modal state
@@ -54,13 +58,14 @@ export const Students: React.FC = () => {
 
   const navigate = useNavigate();
 
-  const loadStudents = () => {
+  const loadStudents = async () => {
     try {
       setLoading(true);
-      const data = dataService.getStudents();
+      const data = await dataService.getStudents();
       setStudents(data);
-    } catch {
-      toast.error('Failed to load student list');
+    } catch (err: any) {
+      console.error('Failed to load students from Supabase:', err);
+      toast.error(err?.message || 'Failed to load students from Supabase');
     } finally {
       setLoading(false);
     }
@@ -76,7 +81,9 @@ export const Students: React.FC = () => {
       const matchesSearch =
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.register_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.section.toLowerCase().includes(searchQuery.toLowerCase());
+        s.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.section.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (s.phone && s.phone.includes(searchQuery));
 
       const matchesStatus = statusFilter === 'All' || s.status === statusFilter;
 
@@ -93,18 +100,31 @@ export const Students: React.FC = () => {
     }
 
     try {
+      setActionLoading(true);
       await dataService.addStudent({
         name: studentForm.name,
         register_number: studentForm.register_number,
+        department: studentForm.department,
         section: studentForm.section,
-        amount_due: Number(studentForm.amount_due) || 0,
+        phone: studentForm.phone,
+        total_amount: Number(studentForm.total_amount) || 0,
       });
-      toast.success('Student added successfully');
+      toast.success('Student saved directly to Supabase!');
       setIsAddModalOpen(false);
-      setStudentForm({ name: '', register_number: '', section: 'B', amount_due: 0 });
-      loadStudents();
-    } catch {
-      toast.error('Error adding student');
+      setStudentForm({
+        name: '',
+        register_number: '',
+        department: 'CSE',
+        section: 'B',
+        phone: '',
+        total_amount: 0,
+      });
+      await loadStudents();
+    } catch (err: any) {
+      console.error('Add student error:', err);
+      toast.error(err?.message || 'Error saving student to Supabase');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -114,8 +134,10 @@ export const Students: React.FC = () => {
     setStudentForm({
       name: student.name,
       register_number: student.register_number,
+      department: student.department || 'CSE',
       section: student.section,
-      amount_due: student.amount_due,
+      phone: student.phone || '',
+      total_amount: student.total_amount,
     });
     setIsEditModalOpen(true);
   };
@@ -126,29 +148,43 @@ export const Students: React.FC = () => {
     if (!currentStudent) return;
 
     try {
+      setActionLoading(true);
       await dataService.updateStudent(currentStudent.id, {
         name: studentForm.name,
         register_number: studentForm.register_number,
+        department: studentForm.department,
         section: studentForm.section,
-        amount_due: Number(studentForm.amount_due),
+        phone: studentForm.phone,
+        total_amount: Number(studentForm.total_amount),
       });
-      toast.success('Student updated successfully');
+      toast.success('Student updated in Supabase!');
       setIsEditModalOpen(false);
-      loadStudents();
-    } catch {
-      toast.error('Error updating student');
+      await loadStudents();
+    } catch (err: any) {
+      console.error('Update student error:', err);
+      toast.error(err?.message || 'Error updating student in Supabase');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   // Handle Delete
   const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete ${name}? All associated payments will be deleted.`)) {
+    if (
+      window.confirm(
+        `Are you sure you want to delete ${name}? All associated payments will be deleted from Supabase.`
+      )
+    ) {
       try {
+        setActionLoading(true);
         await dataService.deleteStudent(id);
-        toast.success('Student deleted');
-        loadStudents();
-      } catch {
-        toast.error('Error deleting student');
+        toast.success('Student deleted from Supabase');
+        await loadStudents();
+      } catch (err: any) {
+        console.error('Delete student error:', err);
+        toast.error(err?.message || 'Error deleting student from Supabase');
+      } finally {
+        setActionLoading(false);
       }
     }
   };
@@ -176,18 +212,22 @@ export const Students: React.FC = () => {
     }
 
     try {
+      setActionLoading(true);
       await dataService.recordPayment({
         student_id: currentStudent.id,
         amount: amountNum,
-        mode: paymentForm.mode,
+        payment_mode: paymentForm.mode,
         payment_date: paymentForm.payment_date,
         notes: paymentForm.notes,
       });
-      toast.success(`Payment of ₹${amountNum} recorded for ${currentStudent.name}`);
+      toast.success(`Payment of ₹${amountNum} saved to Supabase for ${currentStudent.name}!`);
       setIsPayModalOpen(false);
-      loadStudents();
-    } catch {
-      toast.error('Failed to record payment');
+      await loadStudents();
+    } catch (err: any) {
+      console.error('Payment error:', err);
+      toast.error(err?.message || 'Failed to record payment in Supabase');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -204,14 +244,22 @@ export const Students: React.FC = () => {
       window.confirm(
         `Are you sure you want to set the IV Fee to ₹${feeNum.toLocaleString(
           'en-IN'
-        )} for ALL ${students.length} students?`
+        )} for ALL ${students.length} students in Supabase?`
       )
     ) {
-      await dataService.setBatchAmountDue(feeNum);
-      toast.success(`IV Fee set to ₹${feeNum} for all students!`);
-      setIsBatchFeeModalOpen(false);
-      setBatchAmount('');
-      loadStudents();
+      try {
+        setActionLoading(true);
+        await dataService.setBatchAmountDue(feeNum);
+        toast.success(`IV Fee set to ₹${feeNum} for all students in Supabase!`);
+        setIsBatchFeeModalOpen(false);
+        setBatchAmount('');
+        await loadStudents();
+      } catch (err: any) {
+        console.error('Batch fee error:', err);
+        toast.error(err?.message || 'Failed to update fees in Supabase');
+      } finally {
+        setActionLoading(false);
+      }
     }
   };
 
@@ -254,14 +302,27 @@ export const Students: React.FC = () => {
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Student Directory
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                Student Directory
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {students.length} in PostgreSQL
+              </span>
+            </div>
             <p className="text-sm text-slate-500 mt-1">
-              Manage student registrations, set fees, track individual balance, and record collections.
+              Synced across all devices via Supabase PostgreSQL.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={loadStudents}
+              className="inline-flex items-center gap-2 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition border border-slate-300 text-sm shadow-sm"
+              title="Refresh from Supabase"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
             <button
               onClick={() => setIsBatchFeeModalOpen(true)}
               className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl transition border border-indigo-200 text-sm shadow-sm"
@@ -272,7 +333,14 @@ export const Students: React.FC = () => {
             </button>
             <button
               onClick={() => {
-                setStudentForm({ name: '', register_number: '', section: 'B', amount_due: 0 });
+                setStudentForm({
+                  name: '',
+                  register_number: '',
+                  department: 'CSE',
+                  section: 'B',
+                  phone: '',
+                  total_amount: 0,
+                });
                 setIsAddModalOpen(true);
               }}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold rounded-xl transition text-sm shadow-sm"
@@ -296,7 +364,7 @@ export const Students: React.FC = () => {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search by Name, Roll No (e.g. 24CSB01)..."
+              placeholder="Search by Name, Roll No (e.g. 24CSB01), Phone, Dept..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -335,7 +403,7 @@ export const Students: React.FC = () => {
           {loading ? (
             <div className="py-20 text-center text-slate-400">
               <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              <p className="text-sm">Loading student records...</p>
+              <p className="text-sm">Fetching student records from Supabase...</p>
             </div>
           ) : filteredStudents.length === 0 ? (
             <div className="py-20 text-center text-slate-400">
@@ -354,12 +422,14 @@ export const Students: React.FC = () => {
                   <tr>
                     <th className="px-5 py-3.5">Roll No</th>
                     <th className="px-5 py-3.5">Name</th>
-                    <th className="px-4 py-3.5">Sec</th>
-                    <th className="px-5 py-3.5">Fee (Due)</th>
-                    <th className="px-5 py-3.5">Paid</th>
-                    <th className="px-5 py-3.5">Balance</th>
-                    <th className="px-4 py-3.5">Status</th>
-                    <th className="px-5 py-3.5 text-right">Actions</th>
+                    <th className="px-3 py-3.5">Dept</th>
+                    <th className="px-3 py-3.5">Sec</th>
+                    <th className="px-4 py-3.5">Phone</th>
+                    <th className="px-4 py-3.5">Fee (Due)</th>
+                    <th className="px-4 py-3.5">Paid</th>
+                    <th className="px-4 py-3.5">Balance</th>
+                    <th className="px-3 py-3.5">Status</th>
+                    <th className="px-4 py-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -376,22 +446,24 @@ export const Students: React.FC = () => {
                           {s.name}
                         </button>
                       </td>
-                      <td className="px-4 py-4 text-slate-600 font-medium">{s.section}</td>
-                      <td className="px-5 py-4 font-semibold text-slate-800 whitespace-nowrap">
-                        ₹{s.amount_due.toLocaleString('en-IN')}
+                      <td className="px-3 py-4 text-slate-600 text-xs font-semibold">{s.department || 'CSE'}</td>
+                      <td className="px-3 py-4 text-slate-600 font-medium">{s.section}</td>
+                      <td className="px-4 py-4 text-slate-500 text-xs font-mono">{s.phone || '-'}</td>
+                      <td className="px-4 py-4 font-semibold text-slate-800 whitespace-nowrap">
+                        ₹{s.total_amount.toLocaleString('en-IN')}
                       </td>
-                      <td className="px-5 py-4 font-semibold text-emerald-600 whitespace-nowrap">
+                      <td className="px-4 py-4 font-semibold text-emerald-600 whitespace-nowrap">
                         ₹{s.amount_paid.toLocaleString('en-IN')}
                       </td>
-                      <td className="px-5 py-4 font-bold whitespace-nowrap">
+                      <td className="px-4 py-4 font-bold whitespace-nowrap">
                         {s.balance > 0 ? (
                           <span className="text-rose-600">₹{s.balance.toLocaleString('en-IN')}</span>
                         ) : (
                           <span className="text-emerald-600">₹0</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">{getStatusBadge(s.status)}</td>
-                      <td className="px-5 py-4 text-right whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">{getStatusBadge(s.status)}</td>
+                      <td className="px-4 py-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center space-x-1">
                           <button
                             onClick={() => openPaymentModal(s)}
@@ -485,6 +557,28 @@ export const Students: React.FC = () => {
                     />
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Department</label>
+                    <input
+                      type="text"
+                      value={studentForm.department}
+                      onChange={(e) => setStudentForm({ ...studentForm, department: e.target.value })}
+                      placeholder="CSE"
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number</label>
+                    <input
+                      type="tel"
+                      value={studentForm.phone}
+                      onChange={(e) => setStudentForm({ ...studentForm, phone: e.target.value })}
+                      placeholder="Optional"
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     IV Fee Amount (₹)
@@ -492,9 +586,9 @@ export const Students: React.FC = () => {
                   <input
                     type="number"
                     min="0"
-                    value={studentForm.amount_due}
+                    value={studentForm.total_amount}
                     onChange={(e) =>
-                      setStudentForm({ ...studentForm, amount_due: Number(e.target.value) })
+                      setStudentForm({ ...studentForm, total_amount: Number(e.target.value) })
                     }
                     placeholder="0"
                     className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -510,9 +604,10 @@ export const Students: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow-sm"
+                    disabled={actionLoading}
+                    className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow-sm disabled:opacity-50"
                   >
-                    Save Student
+                    {actionLoading ? 'Saving...' : 'Save Student'}
                   </button>
                 </div>
               </form>
@@ -571,6 +666,26 @@ export const Students: React.FC = () => {
                     />
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Department</label>
+                    <input
+                      type="text"
+                      value={studentForm.department}
+                      onChange={(e) => setStudentForm({ ...studentForm, department: e.target.value })}
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Phone</label>
+                    <input
+                      type="tel"
+                      value={studentForm.phone}
+                      onChange={(e) => setStudentForm({ ...studentForm, phone: e.target.value })}
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     IV Fee Amount (₹)
@@ -578,9 +693,9 @@ export const Students: React.FC = () => {
                   <input
                     type="number"
                     min="0"
-                    value={studentForm.amount_due}
+                    value={studentForm.total_amount}
                     onChange={(e) =>
-                      setStudentForm({ ...studentForm, amount_due: Number(e.target.value) })
+                      setStudentForm({ ...studentForm, total_amount: Number(e.target.value) })
                     }
                     className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
@@ -595,9 +710,10 @@ export const Students: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow-sm"
+                    disabled={actionLoading}
+                    className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow-sm disabled:opacity-50"
                   >
-                    Update Student
+                    {actionLoading ? 'Updating...' : 'Update Student'}
                   </button>
                 </div>
               </form>
@@ -629,7 +745,7 @@ export const Students: React.FC = () => {
                 <div>
                   <span className="text-slate-500 block">Total Due:</span>
                   <span className="text-slate-800 font-bold">
-                    ₹{currentStudent.amount_due.toLocaleString('en-IN')}
+                    ₹{currentStudent.total_amount.toLocaleString('en-IN')}
                   </span>
                 </div>
                 <div>
@@ -648,9 +764,22 @@ export const Students: React.FC = () => {
 
               <form onSubmit={handlePaymentSubmit} className="space-y-4 mt-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Payment Amount (₹) *
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Payment Amount (₹) *
+                    </label>
+                    {currentStudent.balance > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPaymentForm({ ...paymentForm, amount: String(currentStudent.balance) })
+                        }
+                        className="text-xs text-indigo-600 hover:underline font-medium"
+                      >
+                        Fill Balance (₹{currentStudent.balance})
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <IndianRupee className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
@@ -692,7 +821,7 @@ export const Students: React.FC = () => {
                     type="date"
                     value={paymentForm.payment_date}
                     onChange={(e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value })}
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>
 
@@ -705,7 +834,7 @@ export const Students: React.FC = () => {
                     value={paymentForm.notes}
                     onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
                     placeholder="Optional (e.g. UTR / Receipt No.)"
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>
 
@@ -719,9 +848,10 @@ export const Students: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition shadow-sm"
+                    disabled={actionLoading}
+                    className="px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition shadow-sm disabled:opacity-50"
                   >
-                    Confirm & Record
+                    {actionLoading ? 'Recording...' : 'Confirm & Record'}
                   </button>
                 </div>
               </form>
@@ -746,9 +876,8 @@ export const Students: React.FC = () => {
                 </button>
               </div>
               <p className="text-xs text-slate-500 mt-3">
-                This will update the Target Amount Due to this specified value for all{' '}
-                <strong className="text-slate-800">{students.length} students</strong> in the
-                directory.
+                This will update the Target Amount Due in Supabase PostgreSQL for all{' '}
+                <strong className="text-slate-800">{students.length} students</strong>.
               </p>
               <form onSubmit={handleBatchFeeSubmit} className="space-y-4 mt-4">
                 <div>
@@ -778,9 +907,10 @@ export const Students: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow-sm"
+                    disabled={actionLoading}
+                    className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow-sm disabled:opacity-50"
                   >
-                    Apply to All
+                    {actionLoading ? 'Updating Supabase...' : 'Apply to All in Supabase'}
                   </button>
                 </div>
               </form>

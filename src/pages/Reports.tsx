@@ -9,6 +9,7 @@ import {
   AlertCircle,
   CreditCard,
   PieChart as PieIcon,
+  RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -18,17 +19,20 @@ export const Reports: React.FC = () => {
   const [students, setStudents] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
 
-  const loadData = () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const s = dataService.getSummary();
-      const st = dataService.getStudents();
-      const p = dataService.getPayments();
+      const [s, st, p] = await Promise.all([
+        dataService.getSummary(),
+        dataService.getStudents(),
+        dataService.getPayments(),
+      ]);
       setSummary(s);
       setStudents(st);
       setPayments(p);
-    } catch {
-      toast.error('Failed to load reports');
+    } catch (err: any) {
+      console.error('Failed to load reports from Supabase:', err);
+      toast.error(err?.message || 'Failed to load reports from Supabase');
     } finally {
       setLoading(false);
     }
@@ -52,7 +56,7 @@ export const Reports: React.FC = () => {
       <Layout>
         <div className="py-20 text-center text-slate-400">
           <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-          <p className="text-sm">Generating reports...</p>
+          <p className="text-sm">Compiling financial reports from Supabase...</p>
         </div>
       </Layout>
     );
@@ -64,14 +68,27 @@ export const Reports: React.FC = () => {
         {/* Header with Export & Print */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Financial Reports & Analytics
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                Financial Reports & Analytics
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Supabase Synced
+              </span>
+            </div>
             <p className="text-sm text-slate-500 mt-1">
               Consolidated audit of student payments, mode-wise distribution, and outstanding receivables.
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={loadData}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition text-sm border border-slate-300"
+              title="Refresh from Supabase"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
             <button
               onClick={() => window.print()}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition text-sm border border-slate-300"
@@ -98,7 +115,7 @@ export const Reports: React.FC = () => {
             <p className="text-2xl font-black text-slate-900 mt-2">
               ₹{summary.totalAmountDue.toLocaleString('en-IN')}
             </p>
-            <p className="text-xs text-slate-400 mt-1">Across {summary.totalStudents} students</p>
+            <p className="text-xs text-slate-400 mt-1">Across {summary.totalStudents} students in Supabase</p>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm">
@@ -130,7 +147,7 @@ export const Reports: React.FC = () => {
               <CreditCard className="w-3.5 h-3.5" /> Total Receipts
             </span>
             <p className="text-2xl font-black text-indigo-600 mt-2">{payments.length}</p>
-            <p className="text-xs text-indigo-600/70 mt-1">Payment transactions</p>
+            <p className="text-xs text-indigo-600/70 mt-1">Recorded in Supabase</p>
           </div>
         </div>
 

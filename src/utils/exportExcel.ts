@@ -4,10 +4,12 @@ import type { StudentWithStats } from '../types';
 export function exportStudentsToExcel(students: StudentWithStats[], filename = 'IV_Payment_Report.xlsx') {
   const data = students.map((s, index) => ({
     'S.No': index + 1,
-    'Register Number / Roll No': s.register_number,
+    'Roll No / Register Number': s.register_number,
     'Student Name': s.name,
+    'Department': s.department || 'CSE',
     'Section': s.section,
-    'Amount to Pay (₹)': s.amount_due,
+    'Phone': s.phone || '-',
+    'Total Amount Due (₹)': s.total_amount,
     'Amount Paid (₹)': s.amount_paid,
     'Balance Amount (₹)': s.balance,
     'Payment Status': s.status,
@@ -20,9 +22,11 @@ export function exportStudentsToExcel(students: StudentWithStats[], filename = '
   // Auto-size columns
   const colWidths = [
     { wch: 6 },
-    { wch: 18 },
+    { wch: 20 },
     { wch: 26 },
+    { wch: 12 },
     { wch: 10 },
+    { wch: 16 },
     { wch: 18 },
     { wch: 18 },
     { wch: 18 },

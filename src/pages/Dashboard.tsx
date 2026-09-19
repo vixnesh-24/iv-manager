@@ -14,6 +14,7 @@ import {
   ArrowRight,
   Clock,
   IndianRupee,
+  RefreshCw,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,17 +34,23 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      await dataService.syncWithSupabase();
-      const s = dataService.getSummary();
-      const allStudents = dataService.getStudents();
+      setErrorMessage(null);
+      const [s, allStudents] = await Promise.all([
+        dataService.getSummary(),
+        dataService.getStudents(),
+      ]);
       setSummary(s);
       setStudents(allStudents);
-    } catch {
-      toast.error('Failed to load dashboard data');
+    } catch (err: any) {
+      console.error('Failed to load dashboard data from Supabase:', err);
+      const msg = err?.message || 'Failed to connect to Supabase database';
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -62,12 +69,41 @@ export const Dashboard: React.FC = () => {
     toast.success('Excel report downloaded!');
   };
 
-  if (loading || !summary) {
+  if (loading) {
     return (
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
           <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-slate-500 font-medium text-sm">Loading IV Payment Dashboard...</p>
+          <p className="text-slate-500 font-medium text-sm">Syncing with Supabase database...</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <Layout>
+        <div className="p-6 bg-white rounded-2xl border border-rose-200 shadow-sm text-center max-w-2xl mx-auto my-12">
+          <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-3" />
+          <h2 className="text-xl font-bold text-slate-900">Database Connection Required</h2>
+          <p className="text-sm text-slate-600 mt-2">
+            Could not query the Supabase tables: <code className="bg-slate-100 px-2 py-1 rounded text-rose-600 font-mono text-xs">{errorMessage}</code>
+          </p>
+          <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl text-left text-xs text-slate-700 space-y-2">
+            <p className="font-semibold text-slate-900">To create the required tables in Supabase:</p>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Open your <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-semibold">Supabase Dashboard</a>.</li>
+              <li>Go to <strong>SQL Editor</strong> → click <strong>New query</strong>.</li>
+              <li>Run the migration script located at <code className="bg-slate-200 px-1 py-0.5 rounded font-mono">supabase/migrations/20241001_create_tables.sql</code>.</li>
+            </ol>
+          </div>
+          <button
+            onClick={loadData}
+            className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition text-sm shadow-sm"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Retry Connection</span>
+          </button>
         </div>
       </Layout>
     );
@@ -75,13 +111,13 @@ export const Dashboard: React.FC = () => {
 
   // Status Chart Data
   const statusData = [
-    { name: 'Paid', value: summary.paidCount, color: '#10b981' },
-    { name: 'Partial', value: summary.partialCount, color: '#f59e0b' },
-    { name: 'Pending', value: summary.pendingCount, color: '#ef4444' },
+    { name: 'Paid', value: summary?.paidCount || 0, color: '#10b981' },
+    { name: 'Partial', value: summary?.partialCount || 0, color: '#f59e0b' },
+    { name: 'Pending', value: summary?.pendingCount || 0, color: '#ef4444' },
   ];
 
   // Mode Chart Data
-  const modeData = Object.entries(summary.modeTotals).map(([mode, total]) => ({
+  const modeData = Object.entries(summary?.modeTotals || {}).map(([mode, total]) => ({
     name: mode,
     value: total as number,
   }));
@@ -94,31 +130,45 @@ export const Dashboard: React.FC = () => {
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              IV Payment Dashboard
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                IV Payment Dashboard
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Supabase Synced
+              </span>
+            </div>
             <p className="text-sm text-slate-500 mt-1">
-              Real-time monitoring of student fees, collections, and outstanding dues.
+              Live multi-device monitoring of student fees, collections, and outstanding dues.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={loadData}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition border border-slate-300/80 text-sm"
+              title="Refresh from Supabase"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
             <Link
               to="/payments"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold rounded-xl transition shadow-sm"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold rounded-xl transition shadow-sm text-sm"
             >
               <CreditCard className="w-4 h-4" />
               <span>Record Payment</span>
             </Link>
             <Link
               to="/students"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition shadow-sm"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition shadow-sm text-sm"
             >
               <PlusCircle className="w-4 h-4" />
               <span>Manage Students</span>
             </Link>
             <button
               onClick={handleExport}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition border border-slate-300/80"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition border border-slate-300/80 text-sm"
               title="Download Excel Report"
             >
               <Download className="w-4 h-4" />
@@ -139,8 +189,8 @@ export const Dashboard: React.FC = () => {
                 <Users className="w-5 h-5" />
               </div>
             </div>
-            <p className="text-3xl font-extrabold text-slate-900 mt-3">{summary.totalStudents}</p>
-            <p className="text-xs text-slate-500 mt-1 font-medium">Batch enrolled</p>
+            <p className="text-3xl font-extrabold text-slate-900 mt-3">{summary?.totalStudents || 0}</p>
+            <p className="text-xs text-slate-500 mt-1 font-medium">Batch enrolled in Supabase</p>
           </div>
 
           {/* Total Amount Due */}
@@ -154,7 +204,7 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
             <p className="text-3xl font-extrabold text-slate-900 mt-3">
-              ₹{summary.totalAmountDue.toLocaleString('en-IN')}
+              ₹{(summary?.totalAmountDue || 0).toLocaleString('en-IN')}
             </p>
             <p className="text-xs text-slate-500 mt-1 font-medium">Target collection</p>
           </div>
@@ -170,7 +220,7 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
             <p className="text-3xl font-extrabold text-emerald-600 mt-3">
-              ₹{summary.totalCollected.toLocaleString('en-IN')}
+              ₹{(summary?.totalCollected || 0).toLocaleString('en-IN')}
             </p>
             <p className="text-xs text-emerald-600/80 mt-1 font-medium">Verified receipts</p>
           </div>
@@ -186,7 +236,7 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
             <p className="text-3xl font-extrabold text-rose-600 mt-3">
-              ₹{summary.totalPending.toLocaleString('en-IN')}
+              ₹{(summary?.totalPending || 0).toLocaleString('en-IN')}
             </p>
             <p className="text-xs text-rose-600/80 mt-1 font-medium">Remaining balance</p>
           </div>
@@ -202,12 +252,12 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
             <p className="text-3xl font-extrabold text-amber-600 mt-3">
-              {summary.collectionPercentage}%
+              {summary?.collectionPercentage || 0}%
             </p>
             <div className="w-full bg-slate-100 h-2 rounded-full mt-2 overflow-hidden">
               <div
                 className="bg-amber-500 h-full rounded-full transition-all duration-500"
-                style={{ width: `${summary.collectionPercentage}%` }}
+                style={{ width: `${summary?.collectionPercentage || 0}%` }}
               ></div>
             </div>
           </div>
@@ -242,15 +292,15 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className="flex justify-around pt-4 border-t border-slate-100 text-center text-xs font-semibold">
               <div className="text-emerald-600">
-                <span className="block text-lg font-bold">{summary.paidCount}</span>
+                <span className="block text-lg font-bold">{summary?.paidCount || 0}</span>
                 <span>Fully Paid</span>
               </div>
               <div className="text-amber-600">
-                <span className="block text-lg font-bold">{summary.partialCount}</span>
+                <span className="block text-lg font-bold">{summary?.partialCount || 0}</span>
                 <span>Partial Paid</span>
               </div>
               <div className="text-rose-600">
-                <span className="block text-lg font-bold">{summary.pendingCount}</span>
+                <span className="block text-lg font-bold">{summary?.pendingCount || 0}</span>
                 <span>Pending</span>
               </div>
             </div>
@@ -265,10 +315,10 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
             <div className="h-64 flex items-center justify-center">
-              {summary.totalCollected === 0 ? (
+              {(summary?.totalCollected || 0) === 0 ? (
                 <div className="text-center text-slate-400 py-12">
                   <CreditCard className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                  <p className="text-sm">No payment records yet.</p>
+                  <p className="text-sm">No payment records in Supabase yet.</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -296,7 +346,7 @@ export const Dashboard: React.FC = () => {
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-4 border-t border-slate-100 text-center text-xs">
-              {Object.entries(summary.modeTotals).map(([mode, total]) => (
+              {Object.entries(summary?.modeTotals || {}).map(([mode, total]) => (
                 <div key={mode} className="p-2 rounded-lg bg-slate-50">
                   <span className="text-slate-500 block font-medium">{mode}</span>
                   <span className="font-bold text-slate-900">
@@ -324,10 +374,10 @@ export const Dashboard: React.FC = () => {
             </Link>
           </div>
 
-          {summary.recentPayments.length === 0 ? (
+          {(summary?.recentPayments || []).length === 0 ? (
             <div className="py-12 text-center text-slate-400">
               <CreditCard className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-              <p className="text-sm font-medium">No recent payments recorded.</p>
+              <p className="text-sm font-medium">No recent payments recorded in Supabase.</p>
               <Link
                 to="/payments"
                 className="mt-3 inline-block text-xs text-indigo-600 hover:underline font-semibold"
@@ -354,7 +404,7 @@ export const Dashboard: React.FC = () => {
                       <td className="px-6 py-4 text-slate-600 whitespace-nowrap font-medium">
                         {p.payment_date}
                       </td>
-                      <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">
+                      <td className="px-6 py-4 font-mono font-bold text-slate-800 whitespace-nowrap">
                         {p.register_number}
                       </td>
                       <td className="px-6 py-4 font-semibold text-slate-900">{p.student_name}</td>
@@ -363,7 +413,7 @@ export const Dashboard: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="px-2.5 py-1 text-xs rounded-full font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          {p.mode}
+                          {p.payment_mode}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-xs text-slate-500 max-w-xs truncate">

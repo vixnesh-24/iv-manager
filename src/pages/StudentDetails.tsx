@@ -15,6 +15,8 @@ import {
   IndianRupee,
   X,
   Edit2,
+  RefreshCw,
+  Phone,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -24,6 +26,7 @@ export const StudentDetails: React.FC = () => {
 
   const [student, setStudent] = useState<StudentWithStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Modals
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -39,17 +42,18 @@ export const StudentDetails: React.FC = () => {
 
   const [newFee, setNewFee] = useState<string>('');
 
-  const loadStudent = () => {
+  const loadStudent = async () => {
     if (!id) return;
     try {
       setLoading(true);
-      const data = dataService.getStudentById(id);
+      const data = await dataService.getStudentById(id);
       setStudent(data);
       if (data) {
-        setNewFee(String(data.amount_due));
+        setNewFee(String(data.total_amount));
       }
-    } catch {
-      toast.error('Failed to load student details');
+    } catch (err: any) {
+      console.error('Failed to load student details from Supabase:', err);
+      toast.error(err?.message || 'Failed to load student details from Supabase');
     } finally {
       setLoading(false);
     }
@@ -82,19 +86,23 @@ export const StudentDetails: React.FC = () => {
     }
 
     try {
+      setActionLoading(true);
       await dataService.recordPayment({
         student_id: student.id,
         amount: amountNum,
-        mode: paymentForm.mode,
+        payment_mode: paymentForm.mode,
         payment_date: paymentForm.payment_date,
         notes: paymentForm.notes,
       });
 
-      toast.success(`Payment of ₹${amountNum} recorded!`);
+      toast.success(`Payment of ₹${amountNum} saved to Supabase!`);
       setIsPayModalOpen(false);
-      loadStudent();
-    } catch {
-      toast.error('Failed to record payment');
+      await loadStudent();
+    } catch (err: any) {
+      console.error('Payment error:', err);
+      toast.error(err?.message || 'Failed to record payment in Supabase');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -109,24 +117,32 @@ export const StudentDetails: React.FC = () => {
     }
 
     try {
-      await dataService.updateStudent(student.id, { amount_due: feeNum });
-      toast.success('IV Fee updated successfully');
+      setActionLoading(true);
+      await dataService.updateStudent(student.id, { total_amount: feeNum });
+      toast.success('IV Fee updated in Supabase!');
       setIsEditFeeModalOpen(false);
-      loadStudent();
-    } catch {
-      toast.error('Failed to update fee');
+      await loadStudent();
+    } catch (err: any) {
+      console.error('Fee update error:', err);
+      toast.error(err?.message || 'Failed to update fee in Supabase');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   // Delete Payment
   const handleDeletePayment = async (paymentId: string, amount: number) => {
-    if (window.confirm(`Delete payment of ₹${amount}?`)) {
+    if (window.confirm(`Delete payment of ₹${amount} from Supabase?`)) {
       try {
+        setActionLoading(true);
         await dataService.deletePayment(paymentId);
-        toast.success('Payment removed');
-        loadStudent();
-      } catch {
-        toast.error('Failed to delete payment');
+        toast.success('Payment removed from Supabase');
+        await loadStudent();
+      } catch (err: any) {
+        console.error('Delete payment error:', err);
+        toast.error(err?.message || 'Failed to delete payment from Supabase');
+      } finally {
+        setActionLoading(false);
       }
     }
   };
@@ -136,7 +152,7 @@ export const StudentDetails: React.FC = () => {
       <Layout>
         <div className="py-20 text-center text-slate-400">
           <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-          <p className="text-sm">Loading student profile...</p>
+          <p className="text-sm">Loading student profile from Supabase...</p>
         </div>
       </Layout>
     );
@@ -145,8 +161,8 @@ export const StudentDetails: React.FC = () => {
   if (!student) {
     return (
       <Layout>
-        <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center">
-          <p className="text-base font-bold text-slate-800">Student not found</p>
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center max-w-md mx-auto my-12">
+          <p className="text-base font-bold text-slate-800">Student not found in Supabase</p>
           <button
             onClick={() => navigate('/students')}
             className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold"
@@ -175,6 +191,14 @@ export const StudentDetails: React.FC = () => {
           </button>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={loadStudent}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition border border-slate-200 text-sm shadow-sm"
+              title="Refresh from Supabase"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
             <button
               onClick={() => setIsEditFeeModalOpen(true)}
               className="inline-flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold rounded-xl transition border border-slate-200 text-sm shadow-sm"
@@ -220,8 +244,21 @@ export const StudentDetails: React.FC = () => {
                 </span>
                 <span>•</span>
                 <span>
+                  Department: <strong className="text-slate-800">{student.department || 'CSE'}</strong>
+                </span>
+                <span>•</span>
+                <span>
                   Section: <strong className="text-slate-800">{student.section}</strong>
                 </span>
+                {student.phone && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-slate-400" />
+                      <strong className="font-mono text-slate-800">{student.phone}</strong>
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -234,9 +271,9 @@ export const StudentDetails: React.FC = () => {
               Total IV Fee
             </span>
             <p className="text-2xl font-black text-slate-900 mt-2">
-              ₹{student.amount_due.toLocaleString('en-IN')}
+              ₹{student.total_amount.toLocaleString('en-IN')}
             </p>
-            <p className="text-xs text-slate-400 mt-1">Assigned target amount</p>
+            <p className="text-xs text-slate-400 mt-1">Assigned in Supabase</p>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm">
@@ -247,8 +284,8 @@ export const StudentDetails: React.FC = () => {
               ₹{student.amount_paid.toLocaleString('en-IN')}
             </p>
             <p className="text-xs text-emerald-600/70 mt-1">
-              {student.amount_due > 0
-                ? `${Math.round((student.amount_paid / student.amount_due) * 100)}% of total fee`
+              {student.total_amount > 0
+                ? `${Math.round((student.amount_paid / student.total_amount) * 100)}% of total fee`
                 : 'Receipts verified'}
             </p>
           </div>
@@ -283,7 +320,7 @@ export const StudentDetails: React.FC = () => {
               <CreditCard className="w-10 h-10 mx-auto mb-2 text-slate-300" />
               <p className="text-sm font-semibold text-slate-700">No payments recorded yet</p>
               <p className="text-xs text-slate-500 mt-1">
-                Record a payment above to add a receipt for this student.
+                Record a payment above to add a receipt for this student in Supabase.
               </p>
               <button
                 onClick={openPayModal}
@@ -318,7 +355,7 @@ export const StudentDetails: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="px-2.5 py-1 text-xs rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          {p.mode}
+                          {p.payment_mode}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-xs text-slate-500 max-w-xs truncate">
@@ -327,7 +364,8 @@ export const StudentDetails: React.FC = () => {
                       <td className="px-6 py-4 text-right whitespace-nowrap">
                         <button
                           onClick={() => handleDeletePayment(p.id, p.amount)}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition"
+                          disabled={actionLoading}
+                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition disabled:opacity-50"
                           title="Delete Payment"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -438,9 +476,10 @@ export const StudentDetails: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 text-sm font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl transition shadow-sm"
+                    disabled={actionLoading}
+                    className="px-5 py-2 text-sm font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl transition shadow-sm disabled:opacity-50"
                   >
-                    Save Payment
+                    {actionLoading ? 'Saving...' : 'Save Payment'}
                   </button>
                 </div>
               </form>
@@ -490,9 +529,10 @@ export const StudentDetails: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow-sm"
+                    disabled={actionLoading}
+                    className="px-5 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow-sm disabled:opacity-50"
                   >
-                    Update Fee
+                    {actionLoading ? 'Updating in Supabase...' : 'Update Fee'}
                   </button>
                 </div>
               </form>
